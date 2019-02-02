@@ -1,0 +1,220 @@
+---
+pdf_document:
+  fig_caption: yes
+author: "Cheng et al"
+date: "October 16, 2018"
+css: summarytools.css
+output:
+  html_document: null
+  pdf_document: default
+  toc: yes
+geometry: margin=.25in
+number_sections: yes
+editor_options:
+  chunk_output_type: console
+title: "Luminex, Moya-moya CSF samples"
+classoption: a3paper
+toc: yes
+---
+  
+# Overview: Analyze Luminex Run 1  
+<div style="background-color: #d5d9e0;">
+The original data input has a duplicate.
+20-GS-IS18-33153172-151284-DX3	wells: D7,D6,
+23-GS-IS18-33153172-151284-DX3	wells: G7,G6,
+These two samples were averaged  together.  We think the tech might have run it twice because of free wells
+</div>
+
+For the final data we are going with log2 transform no normalization.  We tested two other methods outlined by Rausch et al, 2016 ( log2 follow by quantile ) and ( asinh follow by loess ) however both did not perform as well as log2 and the best performer asinh follow by loess perform very similar.  Thus to reduce data manipulation and ambiguity we are are going with just log2 not transform. 
+
+Diffrential differences was conducted with least mean square ( LMS ) with CHEX4 as a covariated.  All p-value are corrected with tukey.   
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(include=TRUE, echo=FALSE, message=FALSE, warning=FALSE)
+```
+
+
+```{r, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+source ( "config.R")
+
+# NOTE THERE ARE NO KEYS!  the data file contains the key 
+
+data <- read.xlsx( data.file , sheet="remove.dup.62Plex", colNames = TRUE)
+# clean up ID names 
+data$ID = as.character ( sapply ( data$ID, function(x) str_match(x, ".*?\\-.*?\\-(.*?)-")[2] ) )
+
+
+
+## create key here 
+key = data[ , 1:3]
+
+## clean up data 
+df.data = t ( data[ ,5:ncol(data)] )
+colnames ( df.data ) = data$ID
+df.data = data.frame ( df.data )
+# transform log2 
+df.data.raw = df.data 
+log2.p1 = log2 ( df.data + 1 )
+df.data = log2 ( df.data )
+
+## plot box plot to look at sample distribution. 
+
+# log2 no normalize
+
+box.raw = boxv (df.data, key, "log2 no normalize ")    
+
+# log2 qn normalize
+df.qn = data.frame ( normalize.quantiles( as.matrix ( df.data)  ) )
+colnames ( df.qn ) = colnames( df.data)
+row.names ( df.qn ) = row.names ( df.data )
+box.qn = boxv ( df.qn, key, "log2 quantile normalize")
+
+# asinh loess normalize 
+df.asinh = asinh( df.data.raw )
+df.asinh = normalize.loess( df.asinh , log.it = F)
+box.df.asinh = boxv (df.asinh, key, " asinh loess normalized ")    
+
+# OK! chose which one you wan to use! 
+
+main = df.data
+key2 = key 
+file.name = "log2.noNorm"
+
+
+
+#####
+temp = melt ( main  )
+colnames(temp) = c("ID", "value")
+temp$group = as.character ( sapply ( temp$ID,  function(x)  unique ( key [ key$ID  == x, ]$group)  ) )
+
+  g = ggplot(temp  , aes(value, fill=group, colours=group)) + geom_density(alpha=0.1) + 
+      theme_bw()  + facet_wrap( ~ group , ncol=1, scales = "free_y"  ) 
+  plot ( g )
+  
+
+# get and extract chex4 
+chex = main [ grepl ( "CHEX4", row.names(main)), , drop=FALSE]
+# remove all CHEX 
+main = main[ !grepl ( "CHEX", row.names(main)), ]
+
+key2$chex4 = as.numeric ( chex )
+
+# this is corrrecting for chex4 
+main2 = apply ( main, 1, function(x) x/key2$chex4)
+main2 = t ( main2 )
+
+mds.cml <-plotMDS( main  )
+mds.cml <- data.frame(x=mds.cml$x, y=mds.cml$y)
+
+m1.cml <- ggplot(mds.cml, aes(x=x, y=y, col=key2$group, shape=key2$group ) ) +
+  geom_point(size=4) +
+  theme_bw() +
+  theme(legend.position="bottom", legend.title=element_blank(), legend.key = element_blank()) +
+  labs(x="Dimension 1", y="Dimension 2") + ggtitle("") 
+
+m1.cml 
+
+main3 = melt ( t ( main ) )
+colnames ( main3  ) = c("ID","gene","value")
+main3 = merge ( main3, key2, by = "ID")
+
+lmean = function (x ){
+    bd = main3[main3$gene == x, ]
+    
+    bd.lm = lm(value ~ group + chex4 , data = bd)
+    result = lsmeans::lsmeans(bd.lm,
+        pairwise ~ group,
+        adjust="tukey")
+
+    r = summary ( result )
+    return ( r$contrasts$p.value )
+    
+    
+    
+}
+
+
+
+
+results = data.frame (  )
+# go through each gene and analyze 
+for (i in unique ( main3$gene ) ){
+    l = lmean ( i )
+    l = as.numeric ( l)
+    
+    results = rbind ( results, t( data.frame ( l )) )
+}
+
+colnames ( results )= c( "Control - MMD-hem" , "Control - MMD-ischemic", "MMD-hem - MMD-ischemic" )
+
+
+results$gene = as.character ( unique ( main3$gene ) )
+
+
+write.xlsx( results, paste0(out.dir, file.name , ".xlsx" ), sheetName = file.name , firstRow=TRUE, tabColour= "#ed8f55",
+  col.names = TRUE, row.names = FALSE, append = FALSE)
+
+
+
+
+
+
+# we have two comparisons 
+key.c.mmd.hem = key2[key2$group %in% c("Control", "MMD-hem"), ] 
+
+dge.c.mmd.hem = results[results$`Control - MMD-hem` < .05,  ]
+
+df.temp = data.frame ( df.data[, key.c.mmd.hem$ID] )
+logfc = as.numeric ( apply(df.temp, 1, function(x){
+     mean ( x[33:nrow ( key.c.mmd.hem)]) -mean ( x[1:32] ) 
+}) )
+rtemp = results[!grepl("CHEX", results$gene), c("gene","Control - MMD-hem")]
+rtemp$logFC = logfc
+
+data.c.mmd.hem = cbind (  rtemp , df.temp  )
+
+
+write.xlsx( data.c.mmd.hem, paste0("c.mmd.hem.xlsx" ), sheetName = "c.mmd.hem", firstRow=TRUE, tabColour= "#ed8f55",
+  col.names = TRUE, row.names = FALSE, append = FALSE)
+
+source('https://www.dropbox.com/s/8c2dc7aeklnniu3/general.11.R?dl=1') # get external functions
+
+
+dd = df.temp [ row.names ( df.temp) %in% dge.c.mmd.hem$gene,  ]
+my_palette <- colorRampPalette(c("blue", "#f2f2f2", "#fc8600"))(n = 75)
+  par(mar=c(0,0,0,0))
+  # bottom, left, top and right 
+
+  hm= heatmap.2(as.matrix( dd  ),  trace="none", labRow=row.names(dd), distfun = function(x) dist(x,method = 'euclidean'), ColSideColors = this.color,
+  hclustfun= function(x) hclust(x,method = 'ward.D2')  ) 
+ 
+  this.color = ifelse ( key.c.mmd.hem$group == "Control", "blue","green")
+  
+   d3heatmap(as.matrix( dd  ),  ColSideColors = this.color, trace="none", labRow=row.names(dd), distfun = function(x) dist(x,method = 'euclidean'), 
+  hclustfun= function(x) hclust(x,method = 'ward.D2')  )
+ 
+## clean up name 
+   key.c.mmd.hem$group = gsub ( "-| ", ".", key.c.mmd.hem$group )
+   key.c.mmd.hem$tube = key.c.mmd.hem$ID
+   
+   gk = 'BDNF'
+g = plot.gene ( df.temp [row.names(df.temp) == gk,], key.single= key.c.mmd.hem , ptext="",title= gk, pid="tube", key.c="group", add=0)
+g$g2 + ylab("log2 ( x + 1) ")
+
+data.c.mmd.hem$adj.P.Val = rep(1, nrow ( data.c.mmd.hem))
+	
+colnames(data.c.mmd.hem)[2] = "P.Value"
+
+
+rsub = c("P.Value","adj.P.Val","logFC", "gene" )
+post1 <- plot.post ( data.c.mmd.hem, "group", "group" , key.c.mmd.hem  , rsub, exp.group="group", exp.this="MMD.hem", normal.this= "Control", sample.id="tube", GENE_SYMBOL = "gene", fdr=2, fold_thres = .2, title1 = "2D vs 3D", top10 = NA)
+
+
+
+```
+
+
+                  
+                  
+
+
