@@ -1,5 +1,6 @@
 ### inputs 
 data.file = './input/data1.xlsx'
+human.file = './input/human.gene.rds'
 ### outputs 
 
 out.dir <- './results/'
@@ -59,7 +60,7 @@ library(lsmeans)
 library("openxlsx")
 library( stringr )
 library( preprocessCore )
-
+library ( ggbeeswarm )
 
 
 
@@ -299,8 +300,21 @@ hist.limma <- function (result.df){
 # exp.this and normal.this is what the name of each group is called.
 #sample.id are the name of the field containing the ids. 
 # GENE_SYMBOL is the field containg the name of your gene. 
+
+#result.gene = df.mmd.hem
+
+#g1 = "group" 
+#g2="group" 
+#new.key = key.c.mmd.hem
+#r.sub = rsub
+#exp.group="group"; exp.this="MMD-hem"; normal.this= "Control"; sample.id="ID"; GENE_SYMBOL = "gene"; fdr=.05;  #fold_thres = 0; title1 = "mmd.hem"; top10 =NA
+
+
+
 plot.post <- function (result.gene, g1,g2, new.key, r.sub,exp.group="group",exp.this="exp", normal.this="control", sample.id="sample.id",p.val=.05, fdr = .05, fold_thres = 1.5, top10 = NA, GENE_SYMBOL= "GENE_SYMBOL", title1="") {  
   
+  new.key$group = gsub ( "-",".", new.key$group)
+  exp.this = gsub ( "-",".", exp.this  )
   #### 
   normal.color <- "#9BB3DF"
   exp.color <- "#DCB335"
@@ -330,7 +344,7 @@ plot.post <- function (result.gene, g1,g2, new.key, r.sub,exp.group="group",exp.
   par(mar=c(0,0,0,0))
   # bottom, left, top and right 
 
-  hm= d3heatmap(as.matrix( d.filter[,!colnames(d.filter) %in% rsub  ]  ), labRow=d.filter$gene, 
+  hm= d3heatmap(scale ( as.matrix( d.filter[,!colnames(d.filter) %in% rsub  ]  ) ), labRow=d.filter$gene, 
   ColSideColors = this.color, distfun = function(x) dist(x,method = 'euclidean'), 
   hclustfun= function(x) hclust(x,method = 'ward.D2')  ) 
   
@@ -359,7 +373,9 @@ plot.post <- function (result.gene, g1,g2, new.key, r.sub,exp.group="group",exp.
   
   result.gene$class <- 'no-change'
   result.gene[ result.gene$P.Value < p.val & (result.gene$logFC > fold_thres) & result.gene$adj.P.Val < fdr, ]$class <- 'up'
+  if ( nrow ( result.gene[ result.gene$P.Value < p.val & (result.gene$logFC < -fold_thres) & result.gene$adj.P.Val < fdr, ] ) > 0 ){
   result.gene[ result.gene$P.Value < p.val & (result.gene$logFC < -fold_thres) & result.gene$adj.P.Val < fdr, ]$class  <- 'down'
+  }
   
   
   ##############
@@ -398,7 +414,7 @@ plot.post <- function (result.gene, g1,g2, new.key, r.sub,exp.group="group",exp.
   
   label.this <- result.gene[ result.gene[[GENE_SYMBOL]] %in% top10, ]
   
-  scatterplot1 <- ggplot(result.gene, aes_string(ave.control ,ave.exp, col="class"))  + 
+  scatterplot1 <- ggplot(result.gene, aes_string(ave.control ,ave.exp, col="class"), inherit.aes = FALSE )  + 
     scale_color_manual(values=c("up"=overexp_col, "no-change"=nochange_col, "down"=underexp_col), breaks=c("up", "down", "no-change"), labels=c(paste0("up in ",e,"(",nrow(result.gene [result.gene $class=='up',]),")"), paste0("down in ", e ,"(",nrow(result.gene[result.gene $class=='down',]),")"), "no-change")) +
     
     
@@ -820,24 +836,13 @@ qcbar <- function (qc.df, key, group.col="group", tube="tube" ){
 # plot.gene (  v.datap[row.names(v.datap) == "Cyp2a5",], key=key, ptext="",title="Gapdh looking good",add=1) + annotate(geom = 'text', label = "Based on Limma", x = -Inf, y = Inf, hjust = -.20, vjust = 3, fontface =2) + annotate(geom = 'text', label = "p (a vs b) = .05", x = -Inf, y = Inf, hjust = -.20, vjust = 4.5, fontface =2)+ annotate(geom = 'text', label = "p (c vs d) = .05", x = -Inf, y = Inf, hjust = -.20, vjust = 6, fontface =2)
 # key.c  the column that will labe the groups
 # pid is the column that you want to label the plot with
-plot.gene <- function (temp, key.single=key, ptext='',title='', yl="log2 (cpm + 1)", add=0, pid="tube", key.c="group",vps= 10, ytitle="log2 ( CPM + 1 )"  ) {
+plot.gene <- function (temp, key.single, ptext='',title='', yl="log2", add=0, pid="tube", key.c="group",vps= 10, ytitle="log2"  ) {
   
-  if (add == 1){
-    # first create new temp
-    temp <- cbind(rep(0,nrow(temp)), temp)
-    colnames(temp)[1] <- "desc"
-    # add to key 
-    t <- data.frame ( key.single[1:1,])
-    t[[key.c]] <- "desc"
-    t[[pid]] <- "desc"
-    key.single <- rbind ( t, key.single )
-    
-  }
   
   temp <- melt (as.matrix ( temp )  )
   colnames ( temp ) = c("gene","variable","value")
-temp$group <- sapply(temp$variable, function(x) key.single[key.single$tube == x, key.c ])
-temp$pid <- sapply(temp$variable, function(x) key.single[key.single$tube == x, pid ])
+temp$group <- sapply(temp$variable, function(x) key.single[key.single[[pid]] == x, key.c ])
+temp$pid <- sapply(temp$variable, function(x) key.single[key.single[[pid]] == x, pid ])
 colsingl <- getPalette ( length (  unique ( temp$group )  )) 
 # create color scheme
 nu <- as.character(factor( temp$group ,labels=colsingl))
@@ -890,9 +895,30 @@ g2 = ggplot(temp, aes(x=factor ( group) , y=value )) +
     stat_summary(fun.y = mean, fun.ymin = mean, fun.ymax = mean,
                  geom = "crossbar", width = .5) +facet_wrap(gene~., ncol=2) 
 
+bee = ggplot(temp, aes(x=factor ( group) , y=value )) +
+    geom_quasirandom(aes(fill = group ), size = vps, shape = 21, alpha = .5) +
+    #geom_violin()+ 
+    #geom_point(size=1, aes( colour=state2) ) +
+    #geom_jitter(shape=19, position=position_jitter(0.07), aes( colour=group) , size = vps, alpha= .5) +
+    theme_bw() +
+    ggtitle( title ) +
+    ylab( ytitle) +
+    xlab("")  +
+    theme(legend.position="bottom", legend.title=element_blank(), legend.key = element_blank(),
+          #axis.text.x = element_blank(),
+          #axis.text.y = element_blank(), # comment this out to display cancer.subtype
+          axis.text.y = element_text(size=12),
+          axis.text.x = element_text(size=15),
+          axis.title.x = element_text(size=22),
+          axis.title.y     = element_text(size=22), 
+          legend.text      =element_text(size=12)
+    ) + scale_color_manual(values = unique ( nu)) +
+    stat_summary(fun.y = mean, fun.ymin = mean, fun.ymax = mean,
+                 geom = "crossbar", width = .5) +facet_wrap(gene~., ncol=2) 
 
 
-return ( list ( g=g, g2=g2 ) )
+
+return ( list ( g=g, violin=g2, bee= bee ) )
 }
 
 ###
