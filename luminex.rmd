@@ -168,7 +168,7 @@ main2 = t ( main2 )
 res.pca <- PCA( t( main ), graph = FALSE)
 # plot the PCA
 p <- fviz_pca_ind(res.pca, label="none", addEllipses=TRUE, ellipse.level=0.95,  axes = c(1, 2))
-p2 <- p +geom_point(aes(colour= key2$group, shape= factor(key2$group) ), size=8.0, alpha=.5  )
+p2 <- p +geom_point(aes(colour= key2$group, shape= factor(key2$group) ), size=3.0, alpha=.5  )
 p2 = p2 + scale_color_discrete(name="") + scale_shape_discrete(name="")
 
 ## dendogram now 
@@ -180,7 +180,7 @@ p2 = p2 + scale_color_discrete(name="") + scale_shape_discrete(name="")
  # plot first to guess how many branches to cut.  Statistically we can us gapstat but its not necessary here
  km =  4
  
- dend1 <- color_branches(dend, k = km , col =  getPalette (km) )  %>% dendextend::set("branches_lwd", c(8))
+ dend1 <- color_branches(dend, k = km , col =  getPalette (km) )  %>% dendextend::set("branches_lwd", c(8))  %>%       dendextend::set("labels_cex", .7)
  # if you plot now then you will get color of each branch, plot ( dend1, horiz=T)
  
 
@@ -214,7 +214,7 @@ ggap = fviz_nbclust(t ( main ), hcut, nstart = 25,  method = "gap_stat", nboot =
 
 Here we see that Dimension 1 explains about 61% of the variance.  There are not clear grouping there however there is a slight pattern between the groups. 
 
-```{r, message=FALSE, warning=FALSE,fig=TRUE,fig.width=8, fig.height=6, echo=FALSE, include=TRUE } 
+```{r, message=FALSE, warning=FALSE,fig=TRUE,fig.width=12, fig.height=10, echo=FALSE, include=TRUE } 
 p2
 ```
 
@@ -228,7 +228,7 @@ This is easier to see and again, we see a slight grouping of the control group a
 ggap
 ```
 
-```{r, message=FALSE, warning=FALSE,fig=TRUE,fig.width=7, fig.height=9, echo=FALSE, include=TRUE } 
+```{r, message=FALSE, warning=FALSE,fig=TRUE,fig.width=7, fig.height=12, echo=FALSE, include=TRUE } 
 par(mar=c(5,5,5,10))
   # bottom, left, top and right 
   
@@ -459,7 +459,7 @@ par(mar=c(5,2,5,10))
  # plot first to guess how many branches to cut.  Statistically we can us gapstat but its not necessary here
  km =  3
  
- dend2 <- color_branches(dend, k = km , col =  getPalette (km) )  %>% dendextend::set("branches_lwd", c(8))
+ dend2 <- color_branches(dend, k = km , col =  getPalette (km) )  %>% dendextend::set("branches_lwd", c(8)) %>%        dendextend::set("labels_cex", .8)
  # if you plot now then you will get color of each branch, plot ( dend1, horiz=T)
  
 
@@ -478,12 +478,12 @@ par(mar=c(5,2,5,10))
 # Supervised Hierarchical clustering with euclidean distance using the Ward.2 method 
 We used genes that were signficant in both groups
 
-```{r, message=FALSE, warning=FALSE,fig=TRUE,fig.width=8, fig.height=10, echo=FALSE, include=TRUE } 
+```{r, message=FALSE, warning=FALSE,fig=TRUE,fig.width=8, fig.height=14, echo=FALSE, include=TRUE } 
 par(mar=c(5,5,5,10))
   # bottom, left, top and right 
   
-plot ( dend2, horiz=T) 
- colored_bars(colors = cbind ( Group = color.group ), dend = dend1, sort_by_labels_order = TRUE, horiz = T)
+plot (dend2 ,horiz=T) 
+ colored_bars(colors = cbind ( Group = color.group ), dend = dend2, sort_by_labels_order = TRUE, horiz = T)
 
 ```
 
